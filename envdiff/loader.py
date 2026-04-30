@@ -54,3 +54,15 @@ def load_from_directory(directory: Union[str, Path], pattern: str = "*.env") -> 
         source = load_from_file(path)
         sources[path.name] = source
     return sources
+
+
+def load_from_env(name: str = "<environment>") -> EnvSource:
+    """Load an EnvSource from the current process environment.
+
+    This is useful for comparing live environment variables against a
+    reference .env file or another source.
+    """
+    import os
+
+    data = parse_env_mapping(dict(os.environ))
+    return EnvSource(name=name, data=data)
