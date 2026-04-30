@@ -1,8 +1,9 @@
-"""Formatters for rendering DiffResult output."""
-
-from typing import List
+"""Formatters for diff output, including optional summary block."""
+import json
+from typing import Optional
 
 from envdiff.differ import DiffEntry, DiffResult, DiffStatus
+from envdiff.reporter import DiffSummary, format_summary_text, summarize
 
 _STATUS_SYMBOL = {
     DiffStatus.ADDED: "+",
@@ -11,62 +12,57 @@ _STATUS_SYMBOL = {
     DiffStatus.UNCHANGED: " ",
 }
 
-_STATUS_LABEL = {
-    DiffStatus.ADDED: "ADDED",
-    DiffStatus.REMOVED: "REMOVED",
-    DiffStatus.CHANGED: "CHANGED",
-    DiffStatus.UNCHANGED: "UNCHANGED",
-}
 
-
-def _format_entry_text(entry: DiffEntry) -> str:
-    symbol = _STATUS_SYMBOL[entry.status]
+def _format_entry_text(entry: DiffEntry) -> Optional[str]:
+    symbol = _STATUS_SYMBOL.get(entry.status, "?")
     if entry.status == DiffStatus.ADDED:
-        return f"{symbol} {entry.key}={entry.right_value}"
+        return f"{symbol} {entry.key}={entry.new_value}"
     if entry.status == DiffStatus.REMOVED:
-        return f"{symbol} {entry.key}={entry.left_value}"
+        return f"{symbol} {entry.key}={entry.old_value}"
     if entry.status == DiffStatus.CHANGED:
-        return f"{symbol} {entry.key}: {entry.left_value!r} -> {entry.right_value!r}"
-    return f"{symbol} {entry.key}={entry.left_value}"
+        return f"{symbol} {entry.key}: {entry.old_value!r} -> {entry.new_value!r}"
+    return None  # unchanged entries are skipped by default
 
 
-def format_text(result: DiffResult) -> str:
-    """Render a DiffResult as a human-readable unified-diff-style string."""
-    if not result.entries:
-        return "No differences found."
-    lines: List[str] = []
+def format_text(result: DiffResult, show_summary: bool = False) -> str:
+    """Render diff as human-readable text.
+
+    Args:
+        result: The diff result to format.
+        show_summary: If True, append a summary block at the end.
+    """
+    lines = []
     for entry in result.entries:
-        lines.append(_format_entry_text(entry))
-    summary_parts = []
-    if result.added:
-        summary_parts.append(f"{len(result.added)} added")
-    if result.removed:
-        summary_parts.append(f"{len(result.removed)} removed")
-    if result.changed:
-        summary_parts.append(f"{len(result.changed)} changed")
-    if summary_parts:
-        lines.append("")
-        lines.append("Summary: " + ", ".join(summary_parts))
+        line = _format_entry_text(entry)
+        if line is not None:
+            lines.append(line)
+
+    if show_summary:
+        if lines:
+            lines.append("")
+        lines.append(format_summary_text(summarize(result)))
+
     return "\n".join(lines)
 
 
-def format_json(result: DiffResult) -> dict:
-    """Render a DiffResult as a JSON-serialisable dictionary."""
-    return {
-        "has_differences": result.has_differences,
-        "summary": {
-            "added": len(result.added),
-            "removed": len(result.removed),
-            "changed": len(result.changed),
-            "unchanged": len(result.unchanged),
-        },
-        "entries": [
-            {
-                "key": e.key,
-                "status": e.status.value,
-                "left_value": e.left_value,
-                "right_value": e.right_value,
-            }
-            for e in result.entries
-        ],
-    }
+def format_json(result: DiffResult, show_summary: bool = False) -> str:
+    """Render diff as a JSON string.
+
+    Args:
+        result: The diff result to format.
+        show_summary: If True, include a 'summary' key in the output.
+    """
+    entries = [
+        {
+            "key": e.key,
+            "status": e.status.value,
+            "old_value": e.old_value,
+            "new_value": e.new_value,
+        }
+        for e in result.entries
+        if e.status != DiffStatus.UNCHANGED
+    ]
+    payload = {"diff": entries}
+    if show_summary:
+        payload["summary"] = summarize(result).as_dict()
+    return json.dumps(payload, indent=2)
