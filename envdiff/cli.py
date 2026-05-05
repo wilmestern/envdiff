@@ -1,22 +1,24 @@
 """Command-line interface for envdiff."""
 
+from __future__ import annotations
+
 import argparse
 import sys
-from typing import List, Optional
+from pathlib import Path
 
-from envdiff.loader import load_from_file
 from envdiff.differ import diff_envs
-from envdiff.formatter import format_text, format_json
-from envdiff.redactor import redact_env
+from envdiff.exporter import export_dotenv_patch, export_json, export_text
+from envdiff.formatter import format_json, format_text
+from envdiff.loader import load_from_file, load_from_string
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="envdiff",
-        description="Compare environment variable sets across configs.",
+        description="Compare environment variable sets across configs with redaction support.",
     )
-    parser.add_argument("file_a", help="First env file (e.g. staging.env)")
-    parser.add_argument("file_b", help="Second env file (e.g. production.env)")
+    parser.add_argument("left", help="Path to the first (source) .env file")
+    parser.add_argument("right", help="Path to the second (target) .env file")
     parser.add_argument(
         "--format",
         choices=["text", "json"],
@@ -27,54 +29,63 @@ def build_parser() -> argparse.ArgumentParser:
         "--show-unchanged",
         action="store_true",
         default=False,
-        help="Include unchanged keys in output",
+        help="Include unchanged keys in the output",
     )
     parser.add_argument(
         "--no-redact",
         action="store_true",
         default=False,
-        help="Disable redaction of sensitive values",
+        help="Disable automatic redaction of sensitive values",
+    )
+    parser.add_argument(
+        "--export",
+        metavar="PATH",
+        help="Write the diff to a file instead of (or in addition to) stdout",
+    )
+    parser.add_argument(
+        "--export-format",
+        choices=["text", "json", "dotenv"],
+        default=None,
+        help="Format for --export output (defaults to --format or 'dotenv' for .env paths)",
     )
     return parser
 
 
-def run(argv: Optional[List[str]] = None) -> int:
+def run(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    try:
-        source_a = load_from_file(args.file_a)
-        source_b = load_from_file(args.file_b)
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
+    left_source = load_from_file(args.left, redact=not args.no_redact)
+    right_source = load_from_file(args.right, redact=not args.no_redact)
 
-    env_a = source_a.data
-    env_b = source_b.data
+    result = diff_envs(left_source, right_source)
 
-    if not args.no_redact:
-        env_a = redact_env(env_a)
-        env_b = redact_env(env_b)
-
-    result = diff_envs(env_a, env_b)
-
+    # --- stdout output ---
     if args.format == "json":
-        output = format_json(result, include_unchanged=args.show_unchanged)
+        print(format_json(result, show_unchanged=args.show_unchanged))
     else:
-        output = format_text(
-            result,
-            label_a=source_a.name,
-            label_b=source_b.name,
-            include_unchanged=args.show_unchanged,
-        )
+        print(format_text(result, show_unchanged=args.show_unchanged))
 
-    print(output)
+    # --- optional file export ---
+    if args.export:
+        export_fmt = args.export_format
+        if export_fmt is None:
+            # Infer from extension or fall back to --format
+            ext = Path(args.export).suffix.lower()
+            if ext in (".env", ".patch"):
+                export_fmt = "dotenv"
+            else:
+                export_fmt = args.format
+
+        if export_fmt == "dotenv":
+            export_dotenv_patch(result, args.export)
+        elif export_fmt == "json":
+            export_json(result, args.export, show_unchanged=args.show_unchanged)
+        else:
+            export_text(result, args.export, show_unchanged=args.show_unchanged)
+
     return 0
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover
     sys.exit(run())
-
-
-if __name__ == "__main__":
-    main()
