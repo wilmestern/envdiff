@@ -73,3 +73,24 @@ def merge_envs(
                 merged[f"{key}__{right.name.upper()}"] = rv
 
     return merged
+
+
+def list_conflicts(left: EnvSource, right: EnvSource) -> Dict[str, tuple]:
+    """Return all keys that have differing values between two EnvSource objects.
+
+    Args:
+        left: The primary / base env source.
+        right: The secondary env source to compare against.
+
+    Returns:
+        A dict mapping each conflicting key to a ``(left_value, right_value)``
+        tuple.  Keys that are identical in both sources are excluded.
+    """
+    left_data: Dict[str, str] = dict(left)
+    right_data: Dict[str, str] = dict(right)
+    shared_keys = set(left_data) & set(right_data)
+    return {
+        key: (left_data[key], right_data[key])
+        for key in sorted(shared_keys)
+        if left_data[key] != right_data[key]
+    }
