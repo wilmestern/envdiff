@@ -62,6 +62,28 @@ def sort_by_prefix(
     return {k: env[k] for k in sorted_keys}
 
 
+def filter_by_prefix(
+    env: Dict[str, str],
+    prefix: str,
+    *,
+    case_sensitive: bool = False,
+) -> Dict[str, str]:
+    """Return a new dict containing only keys that start with *prefix*.
+
+    Args:
+        env: The environment mapping to filter.
+        prefix: The prefix string to match against keys.
+        case_sensitive: If True, the prefix match is case-sensitive.
+
+    Returns:
+        A new dict with only the matching keys, preserving original order.
+    """
+    if case_sensitive:
+        return {k: v for k, v in env.items() if k.startswith(prefix)}
+    prefix_upper = prefix.upper()
+    return {k: v for k, v in env.items() if k.upper().startswith(prefix_upper)}
+
+
 def format_sorted_text(env: Dict[str, str], *, title: str = "") -> str:
     """Render a sorted env mapping as a human-readable text block.
 
