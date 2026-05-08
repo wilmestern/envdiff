@@ -49,6 +49,19 @@ class DiffResult:
     def has_differences(self) -> bool:
         return bool(self.added or self.removed or self.changed)
 
+    def summary(self) -> Dict[str, int]:
+        """Return a count of entries grouped by status.
+
+        Returns:
+            A dict mapping each status value to the number of entries with that status.
+        """
+        return {
+            DiffStatus.ADDED.value: len(self.added),
+            DiffStatus.REMOVED.value: len(self.removed),
+            DiffStatus.CHANGED.value: len(self.changed),
+            DiffStatus.UNCHANGED.value: len(self.unchanged),
+        }
+
 
 def diff_envs(
     left: Dict[str, str],
